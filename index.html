@@ -1,0 +1,1653 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CHEM·LAB — Laboratório Interativo</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Bebas+Neue&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0c10;
+    --surface: #111318;
+    --surface2: #181c24;
+    --border: #1e2530;
+    --acid: #00ff88;
+    --plasma: #ff4d6d;
+    --electric: #00c8ff;
+    --gold: #ffd60a;
+    --purple: #bf5af2;
+    --text: #e8ecf0;
+    --muted: #5a6478;
+    --glow-acid: 0 0 20px #00ff8866, 0 0 60px #00ff8822;
+    --glow-plasma: 0 0 20px #ff4d6d66, 0 0 60px #ff4d6d22;
+    --glow-electric: 0 0 20px #00c8ff66, 0 0 60px #00c8ff22;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* NOISE OVERLAY */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+    pointer-events: none;
+    z-index: 9999;
+    opacity: 0.4;
+  }
+
+  /* NAV */
+  nav {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    z-index: 100;
+    padding: 16px 32px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: rgba(10,12,16,0.85);
+    backdrop-filter: blur(20px);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .logo {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 28px;
+    letter-spacing: 4px;
+    color: var(--acid);
+    text-shadow: var(--glow-acid);
+  }
+
+  .logo span { color: var(--text); }
+
+  nav ul {
+    display: flex;
+    gap: 32px;
+    list-style: none;
+  }
+
+  nav a {
+    font-family: 'Space Mono', monospace;
+    font-size: 11px;
+    color: var(--muted);
+    text-decoration: none;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    transition: color 0.2s;
+  }
+  nav a:hover { color: var(--acid); }
+
+  /* HERO */
+  .hero {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    padding: 120px 32px 80px;
+    text-align: center;
+    overflow: hidden;
+  }
+
+  .hero-bg {
+    position: absolute;
+    inset: 0;
+    background: 
+      radial-gradient(ellipse 60% 50% at 20% 50%, #00ff8808 0%, transparent 70%),
+      radial-gradient(ellipse 50% 60% at 80% 30%, #00c8ff08 0%, transparent 70%),
+      radial-gradient(ellipse 40% 40% at 60% 80%, #bf5af208 0%, transparent 70%);
+    animation: bgPulse 8s ease-in-out infinite alternate;
+  }
+
+  @keyframes bgPulse {
+    from { opacity: 0.6; }
+    to { opacity: 1; }
+  }
+
+  /* Animated atoms in bg */
+  .atom-bg {
+    position: absolute;
+    border-radius: 50%;
+    border: 1px solid;
+    opacity: 0.08;
+    animation: spinOrbit linear infinite;
+  }
+
+  @keyframes spinOrbit {
+    from { transform: translate(-50%, -50%) rotate(0deg); }
+    to { transform: translate(-50%, -50%) rotate(360deg); }
+  }
+
+  .hero-tag {
+    font-family: 'Space Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 4px;
+    color: var(--acid);
+    text-transform: uppercase;
+    margin-bottom: 24px;
+    opacity: 0;
+    animation: fadeUp 0.8s ease forwards 0.2s;
+  }
+
+  .hero h1 {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: clamp(80px, 15vw, 160px);
+    line-height: 0.9;
+    letter-spacing: 8px;
+    margin-bottom: 32px;
+    opacity: 0;
+    animation: fadeUp 0.8s ease forwards 0.4s;
+  }
+
+  .hero h1 .line1 { color: var(--text); }
+  .hero h1 .line2 { 
+    color: var(--acid);
+    text-shadow: var(--glow-acid);
+  }
+
+  .hero p {
+    max-width: 520px;
+    font-size: 17px;
+    color: var(--muted);
+    line-height: 1.7;
+    margin-bottom: 48px;
+    opacity: 0;
+    animation: fadeUp 0.8s ease forwards 0.6s;
+  }
+
+  .hero-cta {
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+    justify-content: center;
+    opacity: 0;
+    animation: fadeUp 0.8s ease forwards 0.8s;
+  }
+
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(30px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .btn-primary {
+    padding: 14px 32px;
+    background: var(--acid);
+    color: #000;
+    font-family: 'Space Mono', monospace;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    border: none;
+    cursor: pointer;
+    text-decoration: none;
+    transition: all 0.2s;
+    clip-path: polygon(8px 0%, 100% 0%, calc(100% - 8px) 100%, 0% 100%);
+  }
+
+  .btn-primary:hover {
+    background: #fff;
+    box-shadow: var(--glow-acid);
+    transform: translateY(-2px);
+  }
+
+  .btn-ghost {
+    padding: 14px 32px;
+    background: transparent;
+    color: var(--text);
+    font-family: 'Space Mono', monospace;
+    font-size: 12px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    border: 1px solid var(--border);
+    cursor: pointer;
+    text-decoration: none;
+    transition: all 0.2s;
+    clip-path: polygon(8px 0%, 100% 0%, calc(100% - 8px) 100%, 0% 100%);
+  }
+
+  .btn-ghost:hover {
+    border-color: var(--electric);
+    color: var(--electric);
+    box-shadow: var(--glow-electric);
+  }
+
+  /* SECTION LAYOUT */
+  section { padding: 100px 32px; max-width: 1200px; margin: 0 auto; }
+  
+  .section-label {
+    font-family: 'Space Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 4px;
+    color: var(--muted);
+    text-transform: uppercase;
+    margin-bottom: 16px;
+  }
+
+  .section-title {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: clamp(40px, 6vw, 72px);
+    letter-spacing: 4px;
+    line-height: 1;
+    margin-bottom: 60px;
+  }
+
+  /* PERIODIC TABLE HIGHLIGHT */
+  .elements-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+    gap: 8px;
+    margin-bottom: 60px;
+  }
+
+  .element-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    padding: 12px 8px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.2s;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .element-card::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    transition: opacity 0.2s;
+  }
+
+  .element-card.metal::before { background: linear-gradient(135deg, #ffd60a11, transparent); }
+  .element-card.nonmetal::before { background: linear-gradient(135deg, #00ff8811, transparent); }
+  .element-card.noble::before { background: linear-gradient(135deg, #bf5af211, transparent); }
+  .element-card.halogen::before { background: linear-gradient(135deg, #ff4d6d11, transparent); }
+  .element-card.alkali::before { background: linear-gradient(135deg, #00c8ff11, transparent); }
+
+  .element-card:hover::before { opacity: 1; }
+  .element-card:hover { transform: scale(1.05); z-index: 2; }
+  .element-card.metal:hover { border-color: var(--gold); }
+  .element-card.nonmetal:hover { border-color: var(--acid); }
+  .element-card.noble:hover { border-color: var(--purple); }
+  .element-card.halogen:hover { border-color: var(--plasma); }
+  .element-card.alkali:hover { border-color: var(--electric); }
+
+  .el-num { font-family: 'Space Mono', monospace; font-size: 9px; color: var(--muted); }
+  .el-symbol { font-family: 'Bebas Neue', sans-serif; font-size: 32px; line-height: 1; }
+  .el-name { font-size: 10px; color: var(--muted); margin-top: 2px; }
+  .el-mass { font-family: 'Space Mono', monospace; font-size: 9px; color: var(--muted); }
+
+  .element-card.metal .el-symbol { color: var(--gold); }
+  .element-card.nonmetal .el-symbol { color: var(--acid); }
+  .element-card.noble .el-symbol { color: var(--purple); }
+  .element-card.halogen .el-symbol { color: var(--plasma); }
+  .element-card.alkali .el-symbol { color: var(--electric); }
+
+  /* EXPERIMENTS */
+  .experiments-container {
+    display: grid;
+    grid-template-columns: 280px 1fr;
+    gap: 24px;
+    min-height: 600px;
+  }
+
+  .exp-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .exp-btn {
+    padding: 16px 20px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--muted);
+    font-family: 'Space Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 1px;
+    text-align: left;
+    cursor: pointer;
+    transition: all 0.2s;
+    position: relative;
+  }
+
+  .exp-btn::after {
+    content: '';
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    width: 3px;
+    opacity: 0;
+    transition: opacity 0.2s;
+  }
+
+  .exp-btn.active, .exp-btn:hover { background: var(--surface2); color: var(--text); }
+  .exp-btn.active::after, .exp-btn:hover::after { opacity: 1; }
+
+  .exp-btn[data-color="acid"]::after { background: var(--acid); }
+  .exp-btn[data-color="plasma"]::after { background: var(--plasma); }
+  .exp-btn[data-color="electric"]::after { background: var(--electric); }
+  .exp-btn[data-color="gold"]::after { background: var(--gold); }
+  .exp-btn[data-color="purple"]::after { background: var(--purple); }
+
+  .exp-btn.active { border-color: var(--border); }
+  .exp-btn[data-color="acid"].active { border-left-color: var(--acid); }
+  .exp-btn[data-color="plasma"].active { border-left-color: var(--plasma); }
+  .exp-btn[data-color="electric"].active { border-left-color: var(--electric); }
+
+  /* LAB CANVAS */
+  .lab-panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .lab-header {
+    padding: 20px 24px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+
+  .lab-indicator {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    animation: pulse 2s ease-in-out infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+  }
+
+  .lab-header h3 {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 22px;
+    letter-spacing: 2px;
+  }
+
+  .lab-body {
+    display: grid;
+    grid-template-columns: 1fr 320px;
+    flex: 1;
+  }
+
+  /* SIMULATION CANVAS */
+  .sim-area {
+    padding: 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    border-right: 1px solid var(--border);
+  }
+
+  canvas.sim-canvas {
+    width: 100%;
+    height: 320px;
+    border: 1px solid var(--border);
+    background: #06080d;
+    border-radius: 2px;
+  }
+
+  .sim-controls {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+
+  .sim-btn {
+    padding: 10px 20px;
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: 'Space Mono', monospace;
+    font-size: 11px;
+    cursor: pointer;
+    transition: all 0.2s;
+    letter-spacing: 1px;
+  }
+
+  .sim-btn.run {
+    border-color: var(--acid);
+    color: var(--acid);
+  }
+  .sim-btn.run:hover {
+    background: var(--acid);
+    color: #000;
+    box-shadow: var(--glow-acid);
+  }
+
+  .sim-btn.reset {
+    border-color: var(--plasma);
+    color: var(--plasma);
+  }
+  .sim-btn.reset:hover {
+    background: var(--plasma);
+    color: #000;
+  }
+
+  .slider-group {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .slider-label {
+    display: flex;
+    justify-content: space-between;
+    font-family: 'Space Mono', monospace;
+    font-size: 10px;
+    color: var(--muted);
+  }
+
+  input[type=range] {
+    width: 100%;
+    -webkit-appearance: none;
+    height: 3px;
+    background: var(--border);
+    outline: none;
+  }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 14px; height: 14px;
+    border-radius: 50%;
+    background: var(--acid);
+    cursor: pointer;
+  }
+
+  /* INFO PANEL */
+  .info-panel {
+    padding: 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+  }
+
+  .info-block {
+    padding: 16px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+  }
+
+  .info-block h4 {
+    font-family: 'Space Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 2px;
+    color: var(--muted);
+    text-transform: uppercase;
+    margin-bottom: 10px;
+  }
+
+  .info-block p {
+    font-size: 13px;
+    line-height: 1.7;
+    color: #8a96a8;
+  }
+
+  .reaction-eq {
+    font-family: 'Space Mono', monospace;
+    font-size: 14px;
+    color: var(--acid);
+    padding: 12px;
+    background: #00ff8808;
+    border: 1px solid #00ff8820;
+    text-align: center;
+    margin: 8px 0;
+  }
+
+  .data-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+
+  .data-cell {
+    padding: 10px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    text-align: center;
+  }
+
+  .data-cell .val {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 24px;
+    line-height: 1;
+  }
+
+  .data-cell .key {
+    font-family: 'Space Mono', monospace;
+    font-size: 9px;
+    color: var(--muted);
+    margin-top: 2px;
+  }
+
+  /* TICKER */
+  .log-area {
+    padding: 12px 16px;
+    border-top: 1px solid var(--border);
+    min-height: 60px;
+    max-height: 100px;
+    overflow-y: auto;
+    font-family: 'Space Mono', monospace;
+    font-size: 10px;
+    color: #4a5568;
+    line-height: 2;
+  }
+
+  .log-area .log-entry { color: var(--acid); animation: fadeIn 0.3s ease; }
+  .log-area .log-warn { color: var(--gold); }
+  @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+  /* THEORY CARDS */
+  .theory-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 20px;
+  }
+
+  .theory-card {
+    padding: 28px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    position: relative;
+    overflow: hidden;
+    cursor: pointer;
+    transition: all 0.3s;
+  }
+
+  .theory-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+  }
+
+  .theory-card.c1::before { background: linear-gradient(90deg, var(--acid), transparent); }
+  .theory-card.c2::before { background: linear-gradient(90deg, var(--electric), transparent); }
+  .theory-card.c3::before { background: linear-gradient(90deg, var(--purple), transparent); }
+  .theory-card.c4::before { background: linear-gradient(90deg, var(--plasma), transparent); }
+  .theory-card.c5::before { background: linear-gradient(90deg, var(--gold), transparent); }
+  .theory-card.c6::before { background: linear-gradient(90deg, #ff6b35, transparent); }
+
+  .theory-card:hover { transform: translateY(-4px); border-color: #2a3040; }
+
+  .theory-icon {
+    font-size: 36px;
+    margin-bottom: 16px;
+    display: block;
+  }
+
+  .theory-card h3 {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 22px;
+    letter-spacing: 2px;
+    margin-bottom: 10px;
+  }
+
+  .theory-card p {
+    font-size: 13px;
+    color: var(--muted);
+    line-height: 1.7;
+  }
+
+  /* MODAL */
+  .modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.85);
+    backdrop-filter: blur(8px);
+    z-index: 200;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 32px;
+  }
+
+  .modal-overlay.open { display: flex; }
+
+  .modal {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    max-width: 600px;
+    width: 100%;
+    max-height: 80vh;
+    overflow-y: auto;
+    position: relative;
+  }
+
+  .modal-header {
+    padding: 24px 28px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    position: sticky;
+    top: 0;
+    background: var(--surface);
+  }
+
+  .modal-header h2 {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 28px;
+    letter-spacing: 3px;
+  }
+
+  .modal-close {
+    width: 32px; height: 32px;
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-size: 18px;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex; align-items: center; justify-content: center;
+  }
+
+  .modal-close:hover { background: var(--plasma); border-color: var(--plasma); }
+
+  .modal-body { padding: 28px; }
+
+  .modal-body h3 {
+    font-family: 'Space Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 2px;
+    color: var(--muted);
+    margin-bottom: 8px;
+    text-transform: uppercase;
+  }
+
+  .modal-body p {
+    font-size: 14px;
+    line-height: 1.8;
+    color: #8a96a8;
+    margin-bottom: 20px;
+  }
+
+  .formula-display {
+    font-family: 'Space Mono', monospace;
+    font-size: 16px;
+    padding: 16px 20px;
+    background: var(--bg);
+    border-left: 3px solid var(--acid);
+    color: var(--acid);
+    margin: 16px 0;
+  }
+
+  /* FOOTER */
+  footer {
+    border-top: 1px solid var(--border);
+    padding: 48px 32px;
+    text-align: center;
+    font-family: 'Space Mono', monospace;
+    font-size: 11px;
+    color: var(--muted);
+    letter-spacing: 2px;
+  }
+
+  footer span { color: var(--acid); }
+
+  /* SCROLLBAR */
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: var(--bg); }
+  ::-webkit-scrollbar-thumb { background: var(--border); }
+
+  /* DIVIDER */
+  .divider {
+    border: none;
+    border-top: 1px solid var(--border);
+    margin: 0;
+  }
+
+  .legend {
+    display: flex;
+    gap: 20px;
+    flex-wrap: wrap;
+    margin-bottom: 24px;
+  }
+
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-family: 'Space Mono', monospace;
+    font-size: 10px;
+    color: var(--muted);
+  }
+
+  .legend-dot {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+  }
+
+  @media (max-width: 768px) {
+    .experiments-container { grid-template-columns: 1fr; }
+    .lab-body { grid-template-columns: 1fr; }
+    .info-panel { border-top: 1px solid var(--border); }
+    nav ul { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav>
+  <div class="logo">CHEM<span>·</span>LAB</div>
+  <ul>
+    <li><a href="#elements">Elementos</a></li>
+    <li><a href="#experiments">Experimentos</a></li>
+    <li><a href="#theory">Teoria</a></li>
+  </ul>
+</nav>
+
+<!-- HERO -->
+<div class="hero">
+  <div class="hero-bg"></div>
+  
+  <!-- Animated orbit rings -->
+  <div class="atom-bg" style="width:600px;height:600px;left:10%;top:50%;border-color:#00ff88;animation-duration:20s;"></div>
+  <div class="atom-bg" style="width:400px;height:400px;left:10%;top:50%;border-color:#00c8ff;animation-duration:14s;animation-direction:reverse;"></div>
+  <div class="atom-bg" style="width:300px;height:300px;right:5%;top:30%;border-color:#bf5af2;animation-duration:18s;"></div>
+
+  <div style="position:relative;z-index:1;">
+    <div class="hero-tag">⚗ Laboratório Virtual de Química</div>
+    <h1>
+      <div class="line1">CIÊNCIA</div>
+      <div class="line2">INTERATIVA</div>
+    </h1>
+    <p>Explore a tabela periódica, conduza experimentos em tempo real e mergulhe nos fundamentos da química com simulações visuais.</p>
+    <div class="hero-cta">
+      <a href="#experiments" class="btn-primary">Iniciar Experimento</a>
+      <a href="#elements" class="btn-ghost">Ver Elementos</a>
+    </div>
+  </div>
+</div>
+
+<hr class="divider">
+
+<!-- ELEMENTS SECTION -->
+<section id="elements" style="max-width:1200px;margin:0 auto;padding:100px 32px;">
+  <div class="section-label">// tabela periódica</div>
+  <div class="section-title">ELEMENTOS <span style="color:var(--acid)">QUÍMICOS</span></div>
+  
+  <div class="legend">
+    <div class="legend-item"><div class="legend-dot" style="background:var(--gold)"></div>Metais</div>
+    <div class="legend-item"><div class="legend-dot" style="background:var(--acid)"></div>Não-Metais</div>
+    <div class="legend-item"><div class="legend-dot" style="background:var(--purple)"></div>Gases Nobres</div>
+    <div class="legend-item"><div class="legend-dot" style="background:var(--plasma)"></div>Halogênios</div>
+    <div class="legend-item"><div class="legend-dot" style="background:var(--electric)"></div>Metais Alcalinos</div>
+  </div>
+
+  <div class="elements-grid" id="elementsGrid"></div>
+</section>
+
+<hr class="divider">
+
+<!-- EXPERIMENTS SECTION -->
+<section id="experiments" style="max-width:1200px;margin:0 auto;padding:100px 32px;">
+  <div class="section-label">// simulações interativas</div>
+  <div class="section-title">EXPERIMENTOS <span style="color:var(--electric)">LAB</span></div>
+
+  <div class="experiments-container">
+    <!-- Experiment list -->
+    <div class="exp-list">
+      <button class="exp-btn active" data-exp="acid-base" data-color="acid">
+        🧪 Reação Ácido-Base
+      </button>
+      <button class="exp-btn" data-exp="combustion" data-color="plasma">
+        🔥 Combustão
+      </button>
+      <button class="exp-btn" data-exp="electrolysis" data-color="electric">
+        ⚡ Eletrólise da Água
+      </button>
+      <button class="exp-btn" data-exp="brownian" data-color="gold">
+        🌊 Movimento Browniano
+      </button>
+      <button class="exp-btn" data-exp="crystal" data-color="purple">
+        💎 Cristalização
+      </button>
+    </div>
+
+    <!-- Lab panel -->
+    <div class="lab-panel">
+      <div class="lab-header">
+        <div class="lab-indicator" id="labIndicator" style="background:var(--acid)"></div>
+        <h3 id="labTitle">REAÇÃO ÁCIDO-BASE</h3>
+        <div style="margin-left:auto;font-family:'Space Mono',monospace;font-size:10px;color:var(--muted)" id="labStatus">PRONTO</div>
+      </div>
+      
+      <div class="lab-body">
+        <div class="sim-area">
+          <canvas id="simCanvas" class="sim-canvas" width="600" height="320"></canvas>
+          
+          <div id="controlsArea" class="sim-controls">
+            <!-- Dynamic controls inserted here -->
+          </div>
+
+          <div id="slidersArea" style="display:flex;flex-direction:column;gap:12px;">
+            <!-- Dynamic sliders -->
+          </div>
+        </div>
+
+        <div class="info-panel">
+          <div class="info-block">
+            <h4>Equação</h4>
+            <div class="reaction-eq" id="reactionEq">HCl + NaOH → NaCl + H₂O</div>
+          </div>
+          <div class="info-block">
+            <h4>Descrição</h4>
+            <p id="expDesc">Ácidos liberam H⁺ e bases liberam OH⁻. Quando reagem, neutralizam-se formando sal e água. O pH vai de ácido (0) a básico (14).</p>
+          </div>
+          <div class="data-grid" id="dataGrid">
+            <div class="data-cell">
+              <div class="val" id="d1" style="color:var(--acid)">7.0</div>
+              <div class="key">pH</div>
+            </div>
+            <div class="data-cell">
+              <div class="val" id="d2" style="color:var(--electric)">25°C</div>
+              <div class="key">TEMP</div>
+            </div>
+            <div class="data-cell">
+              <div class="val" id="d3" style="color:var(--gold)">0</div>
+              <div class="key">PARTÍCULAS</div>
+            </div>
+            <div class="data-cell">
+              <div class="val" id="d4" style="color:var(--purple)">0s</div>
+              <div class="key">TEMPO</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="log-area" id="logArea">
+        <span style="color:var(--muted)">// aguardando início do experimento...</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<hr class="divider">
+
+<!-- THEORY SECTION -->
+<section id="theory" style="max-width:1200px;margin:0 auto;padding:100px 32px;">
+  <div class="section-label">// fundamentos</div>
+  <div class="section-title">TEORIA <span style="color:var(--purple)">QUÍMICA</span></div>
+
+  <div class="theory-grid">
+    <div class="theory-card c1" onclick="openModal('ligacoes')">
+      <span class="theory-icon">🔗</span>
+      <h3>Ligações Químicas</h3>
+      <p>Iônica, covalente e metálica. Como os átomos se unem para formar moléculas e compostos.</p>
+    </div>
+    <div class="theory-card c2" onclick="openModal('termoquimica')">
+      <span class="theory-icon">🌡</span>
+      <h3>Termoquímica</h3>
+      <p>Energia nas reações. Entalpia, reações exotérmicas e endotérmicas, a lei de Hess.</p>
+    </div>
+    <div class="theory-card c3" onclick="openModal('eletroquimica')">
+      <span class="theory-icon">⚡</span>
+      <h3>Eletroquímica</h3>
+      <p>Pilhas, eletrólise e reações de oxirredução. Como a química gera eletricidade.</p>
+    </div>
+    <div class="theory-card c4" onclick="openModal('cinetica')">
+      <span class="theory-icon">⚗</span>
+      <h3>Cinética Química</h3>
+      <p>Velocidade das reações. Fatores que aceleram ou retardam transformações químicas.</p>
+    </div>
+    <div class="theory-card c5" onclick="openModal('equilibrio')">
+      <span class="theory-icon">⚖</span>
+      <h3>Equilíbrio Químico</h3>
+      <p>Princípio de Le Chatelier, constante de equilíbrio Kc e Kp nas reações reversíveis.</p>
+    </div>
+    <div class="theory-card c6" onclick="openModal('organica')">
+      <span class="theory-icon">🧬</span>
+      <h3>Química Orgânica</h3>
+      <p>Hidrocarbonetos, funções orgânicas, isomeria e as bases da vida molecular.</p>
+    </div>
+  </div>
+</section>
+
+<!-- MODAL -->
+<div class="modal-overlay" id="modalOverlay" onclick="if(event.target===this)closeModal()">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 id="modalTitle">LIGAÇÕES QUÍMICAS</h2>
+      <button class="modal-close" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body" id="modalBody"></div>
+  </div>
+</div>
+
+<footer>
+  CHEM<span>·</span>LAB — Laboratório Virtual de Química &nbsp;|&nbsp; Explore. Experimente. Aprenda.
+</footer>
+
+<script>
+// ==================== ELEMENTS DATA ====================
+const elements = [
+  {num:1, sym:'H', name:'Hidrogênio', mass:'1.008', type:'nonmetal'},
+  {num:2, sym:'He', name:'Hélio', mass:'4.003', type:'noble'},
+  {num:3, sym:'Li', name:'Lítio', mass:'6.941', type:'alkali'},
+  {num:4, sym:'Be', name:'Berílio', mass:'9.012', type:'metal'},
+  {num:5, sym:'B', name:'Boro', mass:'10.81', type:'metal'},
+  {num:6, sym:'C', name:'Carbono', mass:'12.01', type:'nonmetal'},
+  {num:7, sym:'N', name:'Nitrogênio', mass:'14.01', type:'nonmetal'},
+  {num:8, sym:'O', name:'Oxigênio', mass:'16.00', type:'nonmetal'},
+  {num:9, sym:'F', name:'Flúor', mass:'19.00', type:'halogen'},
+  {num:10, sym:'Ne', name:'Neônio', mass:'20.18', type:'noble'},
+  {num:11, sym:'Na', name:'Sódio', mass:'22.99', type:'alkali'},
+  {num:12, sym:'Mg', name:'Magnésio', mass:'24.31', type:'metal'},
+  {num:13, sym:'Al', name:'Alumínio', mass:'26.98', type:'metal'},
+  {num:14, sym:'Si', name:'Silício', mass:'28.09', type:'nonmetal'},
+  {num:15, sym:'P', name:'Fósforo', mass:'30.97', type:'nonmetal'},
+  {num:16, sym:'S', name:'Enxofre', mass:'32.07', type:'nonmetal'},
+  {num:17, sym:'Cl', name:'Cloro', mass:'35.45', type:'halogen'},
+  {num:18, sym:'Ar', name:'Argônio', mass:'39.95', type:'noble'},
+  {num:19, sym:'K', name:'Potássio', mass:'39.10', type:'alkali'},
+  {num:20, sym:'Ca', name:'Cálcio', mass:'40.08', type:'metal'},
+  {num:26, sym:'Fe', name:'Ferro', mass:'55.85', type:'metal'},
+  {num:29, sym:'Cu', name:'Cobre', mass:'63.55', type:'metal'},
+  {num:30, sym:'Zn', name:'Zinco', mass:'65.38', type:'metal'},
+  {num:47, sym:'Ag', name:'Prata', mass:'107.9', type:'metal'},
+  {num:79, sym:'Au', name:'Ouro', mass:'197.0', type:'metal'},
+  {num:80, sym:'Hg', name:'Mercúrio', mass:'200.6', type:'metal'},
+  {num:35, sym:'Br', name:'Bromo', mass:'79.90', type:'halogen'},
+  {num:53, sym:'I', name:'Iodo', mass:'126.9', type:'halogen'},
+  {num:82, sym:'Pb', name:'Chumbo', mass:'207.2', type:'metal'},
+  {num:92, sym:'U', name:'Urânio', mass:'238.0', type:'metal'},
+];
+
+const grid = document.getElementById('elementsGrid');
+elements.forEach(el => {
+  const card = document.createElement('div');
+  card.className = `element-card ${el.type}`;
+  card.innerHTML = `
+    <div class="el-num">${el.num}</div>
+    <div class="el-symbol">${el.sym}</div>
+    <div class="el-name">${el.name}</div>
+    <div class="el-mass">${el.mass}</div>
+  `;
+  card.onclick = () => showElementInfo(el);
+  grid.appendChild(card);
+});
+
+function showElementInfo(el) {
+  const typeNames = {metal:'Metal',nonmetal:'Não-Metal',noble:'Gás Nobre',halogen:'Halogênio',alkali:'Metal Alcalino'};
+  openModalDirect(`${el.sym} — ${el.name}`, `
+    <h3>Número Atômico</h3>
+    <p>${el.num}</p>
+    <h3>Massa Atômica</h3>
+    <div class="formula-display">${el.mass} u</div>
+    <h3>Classificação</h3>
+    <p>${typeNames[el.type]}</p>
+    <h3>Configuração Eletrônica</h3>
+    <p>Baseada no número atômico ${el.num}, distribuída conforme o princípio de Aufbau e regra de Hund.</p>
+  `);
+}
+
+// ==================== EXPERIMENT ENGINE ====================
+const canvas = document.getElementById('simCanvas');
+const ctx = canvas.getContext('2d');
+canvas.width = 600; canvas.height = 320;
+
+let particles = [];
+let animFrame = null;
+let isRunning = false;
+let expTime = 0;
+let expTimer = null;
+let currentExp = 'acid-base';
+let pH = 7.0;
+let temperature = 25;
+
+const experiments = {
+  'acid-base': {
+    title: 'REAÇÃO ÁCIDO-BASE',
+    color: '#00ff88',
+    eq: 'HCl + NaOH → NaCl + H₂O',
+    desc: 'Ácidos liberam H⁺ e bases liberam OH⁻. Quando reagem, neutralizam-se formando sal e água. O pH vai de ácido (0) a básico (14).',
+    controls: [
+      {id:'acidSlider', label:'Concentração HCl', min:0, max:100, val:50, unit:'%'},
+      {id:'baseSlider', label:'Concentração NaOH', min:0, max:100, val:50, unit:'%'},
+      {id:'tempSlider', label:'Temperatura', min:0, max:100, val:25, unit:'°C'},
+    ],
+    init: initAcidBase,
+    update: updateAcidBase,
+    draw: drawAcidBase,
+  },
+  'combustion': {
+    title: 'COMBUSTÃO',
+    color: '#ff4d6d',
+    eq: 'CH₄ + 2O₂ → CO₂ + 2H₂O + energia',
+    desc: 'Reação exotérmica entre combustível e comburente (O₂). Produz CO₂, H₂O e libera grande quantidade de energia na forma de calor e luz.',
+    controls: [
+      {id:'fuelSlider', label:'Combustível CH₄', min:0, max:100, val:60, unit:'%'},
+      {id:'o2Slider', label:'Oxigênio O₂', min:0, max:100, val:80, unit:'%'},
+    ],
+    init: initCombustion,
+    update: updateCombustion,
+    draw: drawCombustion,
+  },
+  'electrolysis': {
+    title: 'ELETRÓLISE DA ÁGUA',
+    color: '#00c8ff',
+    eq: '2H₂O → 2H₂ + O₂ (corrente elétrica)',
+    desc: 'Com corrente elétrica, a água se decompõe em H₂ (cátodo) e O₂ (ânodo). Base da produção de hidrogênio verde.',
+    controls: [
+      {id:'voltSlider', label:'Voltagem', min:1, max:24, val:12, unit:'V'},
+    ],
+    init: initElectrolysis,
+    update: updateElectrolysis,
+    draw: drawElectrolysis,
+  },
+  'brownian': {
+    title: 'MOVIMENTO BROWNIANO',
+    color: '#ffd60a',
+    eq: 'F = kT × ∇ln(ρ) — Força de difusão',
+    desc: 'Pequenas partículas em suspensão são bombardeadas por moléculas de fluido, resultando em movimento aleatório. Evidência da existência dos átomos.',
+    controls: [
+      {id:'tempBrown', label:'Temperatura', min:1, max:100, val:50, unit:'°C'},
+      {id:'partCount', label:'N° Partículas', min:5, max:50, val:20, unit:''},
+    ],
+    init: initBrownian,
+    update: updateBrownian,
+    draw: drawBrownian,
+  },
+  'crystal': {
+    title: 'CRISTALIZAÇÃO',
+    color: '#bf5af2',
+    eq: 'solução supersaturada → cristal + solvente',
+    desc: 'Ao resfriar uma solução supersaturada, os solutos precipitam em estruturas cristalinas ordenadas — belas e geometricamente perfeitas.',
+    controls: [
+      {id:'satSlider', label:'Saturação', min:0, max:100, val:70, unit:'%'},
+      {id:'coolSlider', label:'Resfriamento', min:0, max:100, val:40, unit:'%'},
+    ],
+    init: initCrystal,
+    update: updateCrystal,
+    draw: drawCrystal,
+  },
+};
+
+// ---- ACID BASE ----
+let acidParticles = [], baseParticles = [], neutralParticles = [];
+let pHVal = 7;
+
+function initAcidBase() {
+  acidParticles = []; baseParticles = []; neutralParticles = [];
+  const acid = parseInt(document.getElementById('acidSlider')?.value || 50);
+  const base = parseInt(document.getElementById('baseSlider')?.value || 50);
+  const n = 40;
+  for (let i = 0; i < n * acid/100; i++) {
+    acidParticles.push({
+      x: Math.random()*canvas.width, y: Math.random()*canvas.height,
+      vx: (Math.random()-0.5)*2, vy: (Math.random()-0.5)*2,
+      r: 5, color: '#ff4d6d', type:'H+'
+    });
+  }
+  for (let i = 0; i < n * base/100; i++) {
+    baseParticles.push({
+      x: Math.random()*canvas.width, y: Math.random()*canvas.height,
+      vx: (Math.random()-0.5)*2, vy: (Math.random()-0.5)*2,
+      r: 5, color: '#00c8ff', type:'OH-'
+    });
+  }
+}
+
+function updateAcidBase() {
+  const allP = [...acidParticles, ...baseParticles, ...neutralParticles];
+  allP.forEach(p => {
+    p.x += p.vx; p.y += p.vy;
+    if (p.x < p.r || p.x > canvas.width-p.r) p.vx *= -1;
+    if (p.y < p.r || p.y > canvas.height-p.r) p.vy *= -1;
+  });
+  // check collisions H+ vs OH-
+  for (let i = acidParticles.length-1; i >= 0; i--) {
+    for (let j = baseParticles.length-1; j >= 0; j--) {
+      const a = acidParticles[i], b = baseParticles[j];
+      const dx = a.x-b.x, dy = a.y-b.y;
+      if (Math.sqrt(dx*dx+dy*dy) < 14) {
+        neutralParticles.push({x:(a.x+b.x)/2, y:(a.y+b.y)/2, vx:(Math.random()-0.5), vy:(Math.random()-0.5), r:6, color:'#00ff88', type:'NaCl'});
+        acidParticles.splice(i,1); baseParticles.splice(j,1);
+        addLog(`⚗ H⁺ + OH⁻ → H₂O neutralização!`);
+        break;
+      }
+    }
+  }
+  const totalH = acidParticles.length, totalOH = baseParticles.length;
+  if (totalH > totalOH) pHVal = Math.max(0, 7 - (totalH-totalOH)/5);
+  else if (totalOH > totalH) pHVal = Math.min(14, 7 + (totalOH-totalH)/5);
+  else pHVal = 7;
+  document.getElementById('d1').textContent = pHVal.toFixed(1);
+  document.getElementById('d3').textContent = allP.length;
+}
+
+function drawAcidBase() {
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  // pH gradient background
+  const hue = pHVal < 7 ? `rgba(255,77,109,${0.05 + (7-pHVal)*0.02})` : `rgba(0,200,255,${0.05 + (pHVal-7)*0.02})`;
+  ctx.fillStyle = '#06080d';
+  ctx.fillRect(0,0,canvas.width,canvas.height);
+  ctx.fillStyle = hue;
+  ctx.fillRect(0,0,canvas.width,canvas.height);
+
+  // draw particles
+  [...acidParticles, ...baseParticles, ...neutralParticles].forEach(p => {
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.r, 0, Math.PI*2);
+    ctx.fillStyle = p.color+'33';
+    ctx.fill();
+    ctx.strokeStyle = p.color;
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    ctx.fillStyle = p.color;
+    ctx.font = '7px Space Mono';
+    ctx.textAlign = 'center';
+    ctx.fillText(p.type, p.x, p.y+3);
+  });
+
+  // pH bar
+  const barW = 200, barH = 14, bx = (canvas.width-barW)/2, by = canvas.height-30;
+  const phGrad = ctx.createLinearGradient(bx,0,bx+barW,0);
+  phGrad.addColorStop(0,'#ff4d6d'); phGrad.addColorStop(0.5,'#00ff88'); phGrad.addColorStop(1,'#00c8ff');
+  ctx.fillStyle = '#111';
+  ctx.fillRect(bx-2,by-2,barW+4,barH+4);
+  ctx.fillStyle = phGrad;
+  ctx.fillRect(bx,by,barW,barH);
+  const pos = bx + (pHVal/14)*barW;
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(pos-1,by-4,2,barH+8);
+  ctx.fillStyle = '#fff';
+  ctx.font = '9px Space Mono';
+  ctx.textAlign = 'center';
+  ctx.fillText(`pH ${pHVal.toFixed(1)}`, pos, by-8);
+}
+
+// ---- COMBUSTION ----
+let flames = [], sparks = [], smoke = [];
+function initCombustion() { flames = []; sparks = []; smoke = []; }
+
+function updateCombustion() {
+  const fuel = parseInt(document.getElementById('fuelSlider')?.value || 60);
+  const o2 = parseInt(document.getElementById('o2Slider')?.value || 80);
+  const intensity = (fuel * o2) / 10000;
+
+  if (isRunning && Math.random() < intensity * 3) {
+    const cx = canvas.width/2 + (Math.random()-0.5)*80;
+    flames.push({
+      x: cx, y: canvas.height-40,
+      vx: (Math.random()-0.5)*2,
+      vy: -(2 + Math.random()*4 * intensity),
+      life: 1, size: 8 + Math.random()*20*intensity
+    });
+    if (Math.random() < 0.3) {
+      sparks.push({x:cx, y:canvas.height-40, vx:(Math.random()-0.5)*6, vy:-(3+Math.random()*5), life:1});
+    }
+  }
+  flames.forEach(f => { f.x+=f.vx; f.y+=f.vy; f.life-=0.025; f.size*=0.97; });
+  sparks.forEach(s => { s.x+=s.vx; s.y+=s.vy; s.vy+=0.2; s.life-=0.04; });
+  smoke.push({x: canvas.width/2+(Math.random()-0.5)*40, y:canvas.height-60, vx:(Math.random()-0.5)*0.5, vy:-0.5, life:1, r:8});
+  smoke.forEach(s => { s.x+=s.vx; s.y+=s.vy; s.life-=0.008; s.r+=0.3; });
+  flames = flames.filter(f=>f.life>0);
+  sparks = sparks.filter(s=>s.life>0 && s.y < canvas.height);
+  smoke = smoke.filter(s=>s.life>0);
+  document.getElementById('d1').textContent = `${(200*intensity).toFixed(0)}°C`;
+  document.getElementById('d3').textContent = flames.length;
+}
+
+function drawCombustion() {
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  ctx.fillStyle = '#06080d'; ctx.fillRect(0,0,canvas.width,canvas.height);
+  
+  // Ground
+  ctx.fillStyle = '#1a1a2e';
+  ctx.fillRect(0, canvas.height-30, canvas.width, 30);
+  ctx.fillStyle = '#333';
+  ctx.fillRect(canvas.width/2-60, canvas.height-35, 120, 10);
+
+  // Smoke
+  smoke.forEach(s => {
+    const g = ctx.createRadialGradient(s.x,s.y,0,s.x,s.y,s.r);
+    g.addColorStop(0,`rgba(80,80,80,${s.life*0.3})`);
+    g.addColorStop(1,'transparent');
+    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(s.x,s.y,s.r,0,Math.PI*2); ctx.fill();
+  });
+
+  // Flames
+  flames.forEach(f => {
+    const g = ctx.createRadialGradient(f.x,f.y,0,f.x,f.y+f.size/2,f.size);
+    g.addColorStop(0,`rgba(255,255,200,${f.life})`);
+    g.addColorStop(0.3,`rgba(255,140,0,${f.life*0.8})`);
+    g.addColorStop(0.7,`rgba(255,60,0,${f.life*0.5})`);
+    g.addColorStop(1,'transparent');
+    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(f.x,f.y,f.size,0,Math.PI*2); ctx.fill();
+  });
+
+  // Sparks
+  sparks.forEach(s => {
+    ctx.fillStyle = `rgba(255,200,0,${s.life})`;
+    ctx.fillRect(s.x-1,s.y-1,2,2);
+  });
+}
+
+// ---- ELECTROLYSIS ----
+let bubbles = [];
+function initElectrolysis() { bubbles = []; }
+
+function updateElectrolysis() {
+  const volt = parseInt(document.getElementById('voltSlider')?.value || 12);
+  const rate = volt / 10;
+  if (isRunning) {
+    // H2 at cathode (left)
+    if (Math.random() < rate * 0.2) {
+      bubbles.push({x:160+(Math.random()-0.5)*20, y:260, vy:-(0.5+Math.random()*1)*rate*0.3, r:2+Math.random()*3, type:'H₂', color:'#00c8ff'});
+    }
+    // O2 at anode (right)  
+    if (Math.random() < rate * 0.1) {
+      bubbles.push({x:440+(Math.random()-0.5)*20, y:260, vy:-(0.3+Math.random()*0.8)*rate*0.3, r:3+Math.random()*4, type:'O₂', color:'#00ff88'});
+    }
+  }
+  bubbles.forEach(b => { b.y+=b.vy; b.x+=(Math.random()-0.5)*0.5; });
+  bubbles = bubbles.filter(b=>b.y>40);
+  const h2 = bubbles.filter(b=>b.color==='#00c8ff').length;
+  const o2 = bubbles.filter(b=>b.color==='#00ff88').length;
+  document.getElementById('d1').textContent = `${volt}V`;
+  document.getElementById('d2').textContent = `${(volt*0.8).toFixed(1)}A`;
+  document.getElementById('d3').textContent = `H₂:${h2} O₂:${o2}`;
+}
+
+function drawElectrolysis() {
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  ctx.fillStyle = '#06080d'; ctx.fillRect(0,0,canvas.width,canvas.height);
+
+  // Water
+  const wg = ctx.createLinearGradient(80,80,520,280);
+  wg.addColorStop(0,'rgba(0,100,180,0.2)');
+  wg.addColorStop(1,'rgba(0,150,255,0.1)');
+  ctx.fillStyle = wg;
+  ctx.fillRect(80,80,440,200);
+  ctx.strokeStyle = '#00c8ff22'; ctx.strokeRect(80,80,440,200);
+
+  // Water label
+  ctx.fillStyle = '#00c8ff30'; ctx.font = '14px Space Mono'; ctx.textAlign = 'center';
+  ctx.fillText('H₂O', canvas.width/2, 175);
+
+  // Electrodes
+  // Cathode (left) - blue
+  ctx.fillStyle = '#1a3a5c'; ctx.fillRect(145,60,30,220);
+  ctx.strokeStyle = '#00c8ff'; ctx.lineWidth=2; ctx.strokeRect(145,60,30,220);
+  ctx.fillStyle = '#00c8ff'; ctx.font = '10px Space Mono'; ctx.textAlign='center';
+  ctx.fillText('CÁTODO', 160, 50);
+  ctx.fillText('(−)', 160, 295);
+
+  // Anode (right) - green
+  ctx.fillStyle = '#1a4a2c'; ctx.fillRect(425,60,30,220);
+  ctx.strokeStyle = '#00ff88'; ctx.lineWidth=2; ctx.strokeRect(425,60,30,220);
+  ctx.fillStyle = '#00ff88';
+  ctx.fillText('ÂNODO', 440, 50);
+  ctx.fillText('(+)', 440, 295);
+
+  // Wire & battery
+  ctx.strokeStyle = '#555'; ctx.lineWidth=3;
+  ctx.beginPath(); ctx.moveTo(160,60); ctx.lineTo(160,30); ctx.lineTo(440,30); ctx.lineTo(440,60); ctx.stroke();
+  // Battery symbol
+  ctx.fillStyle='#333'; ctx.fillRect(270,20,60,20);
+  ctx.strokeStyle='#ffd60a'; ctx.lineWidth=2; ctx.strokeRect(270,20,60,20);
+  ctx.fillStyle='#ffd60a'; ctx.font='10px Space Mono'; ctx.textAlign='center';
+  ctx.fillText(`${document.getElementById('voltSlider')?.value||12}V`,300,34);
+
+  // Bubbles
+  bubbles.forEach(b => {
+    ctx.beginPath(); ctx.arc(b.x,b.y,b.r,0,Math.PI*2);
+    ctx.strokeStyle = b.color; ctx.lineWidth=1; ctx.stroke();
+    ctx.fillStyle = b.color+'33'; ctx.fill();
+  });
+
+  // Legend
+  ctx.font='9px Space Mono'; ctx.textAlign='left';
+  ctx.fillStyle='#00c8ff'; ctx.fillText('● H₂ (hidrogênio)',90,310);
+  ctx.fillStyle='#00ff88'; ctx.fillText('● O₂ (oxigênio)',250,310);
+}
+
+// ---- BROWNIAN ----
+let brownParticles = [], brownMolecules = [];
+function initBrownian() {
+  brownParticles = [];
+  const count = parseInt(document.getElementById('partCount')?.value || 20);
+  for (let i=0; i<count; i++) {
+    brownParticles.push({x:50+Math.random()*(canvas.width-100), y:50+Math.random()*(canvas.height-100), vx:0, vy:0, trail:[]});
+  }
+}
+
+function updateBrownian() {
+  const temp = parseInt(document.getElementById('tempBrown')?.value || 50) / 50;
+  brownParticles.forEach(p => {
+    p.vx += (Math.random()-0.5)*temp*2;
+    p.vy += (Math.random()-0.5)*temp*2;
+    p.vx *= 0.9; p.vy *= 0.9;
+    p.x += p.vx; p.y += p.vy;
+    p.x = Math.max(10, Math.min(canvas.width-10, p.x));
+    p.y = Math.max(10, Math.min(canvas.height-10, p.y));
+    p.trail.push({x:p.x,y:p.y});
+    if (p.trail.length > 40) p.trail.shift();
+  });
+  document.getElementById('d1').textContent = `${document.getElementById('tempBrown')?.value||50}°C`;
+  document.getElementById('d3').textContent = brownParticles.length;
+}
+
+function drawBrownian() {
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  ctx.fillStyle = '#06080d'; ctx.fillRect(0,0,canvas.width,canvas.height);
+  
+  // Background molecules (fluid)
+  for (let i=0; i<80; i++) {
+    const x = (i*73)%canvas.width, y=(i*47+expTime*0.3)%canvas.height;
+    ctx.fillStyle='#ffffff08';
+    ctx.beginPath(); ctx.arc(x,y,1.5,0,Math.PI*2); ctx.fill();
+  }
+
+  brownParticles.forEach((p, i) => {
+    // Trail
+    if (p.trail.length>1) {
+      ctx.beginPath(); ctx.moveTo(p.trail[0].x,p.trail[0].y);
+      p.trail.forEach(t=>ctx.lineTo(t.x,t.y));
+      ctx.strokeStyle = `rgba(255,214,10,0.15)`; ctx.lineWidth=1; ctx.stroke();
+    }
+    // Particle
+    ctx.beginPath(); ctx.arc(p.x,p.y,7,0,Math.PI*2);
+    ctx.fillStyle='#ffd60a33'; ctx.fill();
+    ctx.strokeStyle='#ffd60a'; ctx.lineWidth=2; ctx.stroke();
+  });
+}
+
+// ---- CRYSTAL ----
+let crystalPoints = [], crystallized = [];
+function initCrystal() { crystalPoints = []; crystallized = []; }
+
+function updateCrystal() {
+  const sat = parseInt(document.getElementById('satSlider')?.value || 70) / 100;
+  const cool = parseInt(document.getElementById('coolSlider')?.value || 40) / 100;
+  if (isRunning && Math.random() < sat * cool * 0.3) {
+    const centerX = canvas.width/2, centerY = canvas.height/2;
+    if (crystallized.length < 200) {
+      if (crystallized.length === 0) {
+        crystallized.push({x:centerX, y:centerY, angle:Math.random()*Math.PI*2, size:4+Math.random()*6});
+      } else {
+        const seed = crystallized[Math.floor(Math.random()*crystallized.length)];
+        const angle = (Math.floor(Math.random()*6)) * (Math.PI/3);
+        const dist = 10 + Math.random()*4;
+        const nx = seed.x + Math.cos(angle)*dist, ny = seed.y + Math.sin(angle)*dist;
+        if (nx>20&&nx<canvas.width-20&&ny>20&&ny<canvas.height-20) {
+          crystallized.push({x:nx, y:ny, angle:angle, size:3+Math.random()*5});
+          if (Math.random()<0.1) addLog(`💎 Cristal formado! ${crystallized.length} nós`);
+        }
+      }
+    }
+  }
+  document.getElementById('d3').textContent = crystallized.length;
+  document.getElementById('d1').textContent = `${(100 - parseInt(document.getElementById('coolSlider')?.value||40)).toFixed(0)}°C`;
+}
+
+function drawCrystal() {
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  ctx.fillStyle='#06080d'; ctx.fillRect(0,0,canvas.width,canvas.height);
+
+  crystallized.forEach((c,i) => {
+    const hue = 270 + i*0.3;
+    for (let a=0; a<6; a++) {
+      const angle = a*(Math.PI/3);
+      const ex = c.x+Math.cos(angle)*c.size, ey = c.y+Math.sin(angle)*c.size;
+      ctx.beginPath(); ctx.moveTo(c.x,c.y); ctx.lineTo(ex,ey);
+      ctx.strokeStyle=`hsla(${hue},80%,70%,0.6)`; ctx.lineWidth=1.5; ctx.stroke();
+      ctx.beginPath(); ctx.arc(ex,ey,2,0,Math.PI*2);
+      ctx.fillStyle=`hsla(${hue},80%,70%,0.8)`; ctx.fill();
+    }
+    ctx.beginPath(); ctx.arc(c.x,c.y,2.5,0,Math.PI*2);
+    ctx.fillStyle=`hsla(${hue},90%,80%,1)`; ctx.fill();
+  });
+
+  if (crystallized.length===0 && isRunning) {
+    ctx.fillStyle='#2a2a3a'; ctx.font='13px Space Mono'; ctx.textAlign='center';
+    ctx.fillText('Aguardando nucleação...', canvas.width/2, canvas.height/2);
+  }
+}
+
+// ==================== MAIN LOOP ====================
+function mainLoop() {
+  if (!isRunning) return;
+  expTime++;
+  document.getElementById('d4').textContent = `${expTime}s`;
+
+  const exp = experiments[currentExp];
+  exp.update();
+  exp.draw();
+
+  animFrame = requestAnimationFrame(mainLoop);
+}
+
+function startExperiment() {
+  if (isRunning) return;
+  isRunning = true;
+  expTime = 0;
+  document.getElementById('labStatus').textContent = 'EXECUTANDO';
+  document.getElementById('labIndicator').style.background = '#00ff88';
+  addLog(`▶ Experimento iniciado: ${experiments[currentExp].title}`);
+  experiments[currentExp].init();
+  mainLoop();
+}
+
+function stopExperiment() {
+  isRunning = false;
+  cancelAnimationFrame(animFrame);
+  document.getElementById('labStatus').textContent = 'PAUSADO';
+  document.getElementById('labIndicator').style.background = '#ffd60a';
+  addLog('⏸ Experimento pausado');
+}
+
+function resetExperiment() {
+  stopExperiment();
+  expTime = 0;
+  pHVal = 7;
+  document.getElementById('d4').textContent = '0s';
+  document.getElementById('labStatus').textContent = 'PRONTO';
+  document.getElementById('labIndicator').style.background = experiments[currentExp].color;
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  ctx.fillStyle='#06080d'; ctx.fillRect(0,0,canvas.width,canvas.height);
+  addLog('↺ Laboratório resetado');
+}
+
+function switchExperiment(id) {
+  stopExperiment();
+  currentExp = id;
+  const exp = experiments[id];
+  document.getElementById('labTitle').textContent = exp.title;
+  document.getElementById('labIndicator').style.background = exp.color;
+  document.getElementById('reactionEq').textContent = exp.eq;
+  document.getElementById('reactionEq').style.color = exp.color;
+  document.getElementById('expDesc').textContent = exp.desc;
+  document.getElementById('labStatus').textContent = 'PRONTO';
+  buildControls(exp);
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  ctx.fillStyle='#06080d'; ctx.fillRect(0,0,canvas.width,canvas.height);
+  addLog(`🔬 Carregado: ${exp.title}`);
+}
+
+function buildControls(exp) {
+  const ca = document.getElementById('controlsArea');
+  const sa = document.getElementById('slidersArea');
+  ca.innerHTML = `
+    <button class="sim-btn run" onclick="startExperiment()">▶ INICIAR</button>
+    <button class="sim-btn" onclick="stopExperiment()" style="border-color:var(--gold);color:var(--gold)">⏸ PAUSAR</button>
+    <button class="sim-btn reset" onclick="resetExperiment()">↺ RESETAR</button>
+  `;
+  sa.innerHTML = '';
+  (exp.controls||[]).forEach(c => {
+    const div = document.createElement('div');
+    div.className = 'slider-group';
+    div.innerHTML = `
+      <div class="slider-label"><span>${c.label}</span><span id="${c.id}Val">${c.val}${c.unit}</span></div>
+      <input type="range" id="${c.id}" min="${c.min}" max="${c.max}" value="${c.val}" oninput="document.getElementById('${c.id}Val').textContent=this.value+'${c.unit}'">
+    `;
+    sa.appendChild(div);
+  });
+}
+
+// ==================== LOG ====================
+function addLog(msg) {
+  const log = document.getElementById('logArea');
+  const cls = msg.includes('⏸')||msg.includes('↺') ? 'log-warn' : 'log-entry';
+  const time = new Date().toLocaleTimeString('pt-BR', {hour12:false});
+  log.innerHTML += `<div class="${cls}">[${time}] ${msg}</div>`;
+  log.scrollTop = log.scrollHeight;
+}
+
+// ==================== EXPERIMENT BUTTONS ====================
+document.querySelectorAll('.exp-btn').forEach(btn => {
+  btn.onclick = () => {
+    document.querySelectorAll('.exp-btn').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    switchExperiment(btn.dataset.exp);
+  };
+});
+
+// ==================== THEORY MODALS ====================
+const theoryData = {
+  ligacoes: {
+    title: 'LIGAÇÕES QUÍMICAS',
+    content: `
+      <h3>O que são?</h3>
+      <p>Ligações químicas são as forças que mantêm átomos unidos em moléculas e compostos. Existem três tipos principais, cada um com propriedades únicas.</p>
+      
+      <h3>Ligação Iônica</h3>
+      <div class="formula-display">Na⁺ + Cl⁻ → NaCl (sal de cozinha)</div>
+      <p>Ocorre entre metal e não-metal. Há transferência de elétrons, formando íons positivos (cátions) e negativos (ânions) que se atraem eletrostaticamente.</p>
+
+      <h3>Ligação Covalente</h3>
+      <div class="formula-display">H· + ·H → H₂ (compartilhamento)</div>
+      <p>Ocorre entre não-metais. Os átomos compartilham pares de elétrons para atingir estabilidade (regra do octeto).</p>
+
+      <h3>Ligação Metálica</h3>
+      <p>Nos metais, elétrons livres formam um "mar de elétrons" que explica condutividade elétrica, maleabilidade e brilho característicos.</p>
+    `
+  },
+  termoquimica: {
+    title: 'TERMOQUÍMICA',
+    content: `
+      <h3>Energia nas Reações</h3>
+      <p>Toda reação química envolve troca de energia com o ambiente, geralmente na forma de calor (Q) ou trabalho.</p>
+
+      <h3>Entalpia (ΔH)</h3>
+      <div class="formula-display">ΔH = H_produtos − H_reagentes</div>
+      <p>Se ΔH < 0: reação exotérmica (libera calor). Se ΔH > 0: reação endotérmica (absorve calor).</p>
+
+      <h3>Lei de Hess</h3>
+      <p>A variação de entalpia de uma reação independe do caminho percorrido — depende apenas dos estados inicial e final. Isso permite calcular ΔH de reações que não ocorrem diretamente.</p>
+
+      <h3>Exemplo</h3>
+      <div class="formula-display">CH₄ + 2O₂ → CO₂ + 2H₂O  ΔH = −890 kJ/mol</div>
+    `
+  },
+  eletroquimica: {
+    title: 'ELETROQUÍMICA',
+    content: `
+      <h3>Reações de Oxirredução</h3>
+      <p>Envolvem transferência de elétrons entre espécies. Quem perde elétrons é oxidado; quem ganha é reduzido.</p>
+
+      <h3>Pilhas Eletroquímicas</h3>
+      <div class="formula-display">Zn → Zn²⁺ + 2e⁻ (oxidação) | Cu²⁺ + 2e⁻ → Cu (redução)</div>
+      <p>Na pilha de Daniell, zinco se oxida espontaneamente enquanto cobre é reduzido, gerando corrente elétrica.</p>
+
+      <h3>Eletrólise</h3>
+      <p>Processo não-espontâneo forçado por corrente elétrica. Na eletrólise da água: H₂ se deposita no cátodo (polo negativo) e O₂ no ânodo (polo positivo).</p>
+
+      <h3>Potencial de Eletrodo (E°)</h3>
+      <div class="formula-display">E°célula = E°cátodo − E°ânodo</div>
+    `
+  },
+  cinetica: {
+    title: 'CINÉTICA QUÍMICA',
+    content: `
+      <h3>Velocidade de Reação</h3>
+      <p>Mede o quanto os reagentes são consumidos (ou produtos formados) por unidade de tempo. Depende de vários fatores.</p>
+
+      <h3>Fatores que Afetam a Velocidade</h3>
+      <p>Temperatura (maior T → mais energia cinética → mais colisões efetivas), concentração dos reagentes, superfície de contato, catalisadores e luz.</p>
+
+      <h3>Teoria das Colisões</h3>
+      <div class="formula-display">k = A · e^(−Ea/RT)</div>
+      <p>Equação de Arrhenius: a constante de velocidade k depende exponencialmente da energia de ativação Ea e da temperatura T.</p>
+
+      <h3>Catalisadores</h3>
+      <p>Diminuem a energia de ativação sem serem consumidos, acelerando reações drasticamente. Enzimas são catalisadores biológicos altamente específicos.</p>
+    `
+  },
+  equilibrio: {
+    title: 'EQUILÍBRIO QUÍMICO',
+    content: `
+      <h3>Reações Reversíveis</h3>
+      <p>Em sistema fechado, reações reversíveis atingem equilíbrio dinâmico: taxas das reações direta e inversa se igualam.</p>
+
+      <h3>Constante de Equilíbrio</h3>
+      <div class="formula-display">Kc = [produtos]^n / [reagentes]^m</div>
+      <p>Kc >> 1: equilíbrio favorece produtos. Kc << 1: favorece reagentes. Kc depende apenas da temperatura.</p>
+
+      <h3>Princípio de Le Chatelier</h3>
+      <p>Se um sistema em equilíbrio sofre perturbação (mudança de concentração, pressão ou temperatura), ele se desloca para minimizar o efeito da perturbação.</p>
+
+      <h3>Exemplo: Síntese de Amônia</h3>
+      <div class="formula-display">N₂ + 3H₂ ⇌ 2NH₃  ΔH = −92 kJ/mol</div>
+    `
+  },
+  organica: {
+    title: 'QUÍMICA ORGÂNICA',
+    content: `
+      <h3>O Carbono como Base da Vida</h3>
+      <p>O carbono forma 4 ligações covalentes, criando cadeias longas e complexas — a base de toda química da vida.</p>
+
+      <h3>Hidrocarbonetos</h3>
+      <div class="formula-display">Alcano: CₙH₂ₙ₊₂ | Alqueno: CₙH₂ₙ | Alquino: CₙH₂ₙ₋₂</div>
+      <p>Alcanos (ligações simples), alquenos (dupla), alquinos (tripla). A insaturação afeta reatividade e propriedades físicas.</p>
+
+      <h3>Funções Orgânicas Principais</h3>
+      <p>Álcoois (−OH), ácidos carboxílicos (−COOH), ésteres (−COO−), aminas (−NH₂), aldeídos (−CHO), cetonas (−CO−). Cada grupo funcional define propriedades únicas.</p>
+
+      <h3>Isomeria</h3>
+      <p>Compostos com mesma fórmula molecular mas estruturas diferentes. Podem ter propriedades físicas e químicas completamente distintas — incluindo atividade biológica oposta.</p>
+    `
+  }
+};
+
+function openModal(id) {
+  const data = theoryData[id];
+  document.getElementById('modalTitle').textContent = data.title;
+  document.getElementById('modalBody').innerHTML = data.content;
+  document.getElementById('modalOverlay').classList.add('open');
+}
+
+function openModalDirect(title, content) {
+  document.getElementById('modalTitle').textContent = title;
+  document.getElementById('modalBody').innerHTML = content;
+  document.getElementById('modalOverlay').classList.add('open');
+}
+
+function closeModal() {
+  document.getElementById('modalOverlay').classList.remove('open');
+}
+
+// ==================== INIT ====================
+buildControls(experiments['acid-base']);
+ctx.fillStyle='#06080d'; ctx.fillRect(0,0,canvas.width,canvas.height);
+ctx.fillStyle='#1a2030'; ctx.font='13px Space Mono'; ctx.textAlign='center';
+ctx.fillText('Pressione INICIAR para começar o experimento', canvas.width/2, canvas.height/2);
+</script>
+</body>
+</html>
