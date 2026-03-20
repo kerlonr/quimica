@@ -1041,10 +1041,12 @@ const experiments = {
   'electrolysis': {
     title: 'ELETRÓLISE DA ÁGUA',
     color: '#00c8ff',
-    eq: '2H₂O → 2H₂ + O₂ (corrente elétrica)',
-    desc: 'Com corrente elétrica, a água se decompõe em H₂ (cátodo) e O₂ (ânodo). Base da produção de hidrogênio verde.',
+    eq: '2H₂O → 2H₂↑ (cátodo) + O₂↑ (ânodo)',
+    desc: 'Corrente elétrica força a decomposição da água. H₂ se forma no cátodo (−) por redução; O₂ no ânodo (+) por oxidação. Produção na razão 2:1 em volume.',
     controls: [
-      {id:'voltSlider', label:'Voltagem', min:1, max:24, val:12, unit:'V'},
+      {id:'voltSlider', label:'Voltagem', min:1, max:30, val:12, unit:'V'},
+      {id:'elConcSlider', label:'Concentração NaOH', min:0, max:100, val:50, unit:'%'},
+      {id:'elTempSlider', label:'Temperatura', min:10, max:90, val:25, unit:'°C'},
     ],
     init: initElectrolysis,
     update: updateElectrolysis,
@@ -1240,82 +1242,484 @@ function drawCombustion() {
 }
 
 // ---- ELECTROLYSIS ----
-let bubbles = [];
-function initElectrolysis() { bubbles = []; }
+// Substâncias disponíveis (sem O, sem F, sem família 1/2, sem Al)
+// Cada substância define o que aparece no cátodo e ânodo
+const EL_SUBSTANCES = {
+  water: {
+    label: 'H₂O pura',
+    solvent: 'H₂O',
+    waterColor: ['#071828','#041018'],
+    // cátodo: elétrons chegam → H₂O reduz → H₂ sobe + OH⁻ migra pro ânodo
+    cathode: { gasLabel:'H₂', gasColor:'#00c8ff', ionLabel:'OH⁻', ionColor:'#ff8844', ionDir:+1,
+               halfRxn:'4H₂O + 4e⁻ → 2H₂↑ + 4OH⁻' },
+    // ânodo: H₂O oxida → O₂ sobe + libera e⁻ + H⁺ migra pro cátodo
+    anode:   { gasLabel:'O₂', gasColor:'#00ff88', ionLabel:'H⁺',  ionColor:'#aaddff', ionDir:-1,
+               halfRxn:'2H₂O → O₂↑ + 4H⁺ + 4e⁻' },
+    overall: '2H₂O → 2H₂↑ + O₂↑',
+    minVolt: 1.23,
+    ratio: '2:1 (H₂:O₂)',
+  },
+  hcl: {
+    label: 'HCl aq.',
+    solvent: 'HCl(aq)',
+    waterColor: ['#0d1a10','#081208'],
+    // cátodo: H⁺ reduz → H₂ sobe; OH⁻ (da água) migra pro ânodo
+    cathode: { gasLabel:'H₂', gasColor:'#00c8ff', ionLabel:'H⁺',  ionColor:'#aaddff', ionDir:+1,
+               halfRxn:'2H⁺ + 2e⁻ → H₂↑' },
+    // ânodo: Cl⁻ oxida → Cl₂ sobe + libera e⁻; Cl⁻ migra pro ânodo
+    anode:   { gasLabel:'Cl₂', gasColor:'#aaff44', ionLabel:'Cl⁻', ionColor:'#aaff44', ionDir:-1,
+               halfRxn:'2Cl⁻ → Cl₂↑ + 2e⁻' },
+    overall: '2HCl → H₂↑ + Cl₂↑',
+    minVolt: 1.36,
+    ratio: '1:1 (H₂:Cl₂)',
+  },
+  cuso4: {
+    label: 'CuSO₄ aq.',
+    solvent: 'CuSO₄(aq)',
+    waterColor: ['#041820','#021010'],
+    // cátodo: Cu²⁺ reduz → Cu deposita (não forma gás, mas animamos íons chegando)
+    cathode: { gasLabel:'Cu', gasColor:'#e87020', ionLabel:'Cu²⁺', ionColor:'#e87020', ionDir:+1,
+               halfRxn:'Cu²⁺ + 2e⁻ → Cu (depósito)' },
+    // ânodo: H₂O oxida → O₂ sobe; SO₄²⁻ é espectador, migra pro ânodo
+    anode:   { gasLabel:'O₂', gasColor:'#00ff88', ionLabel:'SO₄²⁻', ionColor:'#bf5af2', ionDir:-1,
+               halfRxn:'2H₂O → O₂↑ + 4H⁺ + 4e⁻' },
+    overall: '2CuSO₄ + 2H₂O → 2Cu↓ + O₂↑ + 2H₂SO₄',
+    minVolt: 0.34,
+    ratio: 'Cu deposita no cátodo',
+  },
+  h2so4: {
+    label: 'H₂SO₄ aq.',
+    solvent: 'H₂SO₄(aq)',
+    waterColor: ['#1a0808','#0e0404'],
+    // cátodo: H⁺ reduz → H₂ sobe
+    cathode: { gasLabel:'H₂', gasColor:'#00c8ff', ionLabel:'H⁺',  ionColor:'#aaddff', ionDir:+1,
+               halfRxn:'4H⁺ + 4e⁻ → 2H₂↑' },
+    // ânodo: H₂O oxida → O₂ sobe; SO₄²⁻ espectador migra
+    anode:   { gasLabel:'O₂', gasColor:'#00ff88', ionLabel:'SO₄²⁻', ionColor:'#bf5af2', ionDir:-1,
+               halfRxn:'2H₂O → O₂↑ + 4H⁺ + 4e⁻' },
+    overall: '2H₂O → 2H₂↑ + O₂↑  (H₂SO₄ = catalisador)',
+    minVolt: 1.23,
+    ratio: '2:1 (H₂:O₂)',
+  },
+};
+
+let elSubstance = 'water';
+let elBubblesC = [], elBubblesA = [], elIons = [], elElectrons = [];
+let elGasCTotal = 0, elGasATotal = 0;
+
+// Inject substance selector into info-panel when electrolysis is active
+function buildElectrolysisSelector() {
+  // remove old if present
+  const old = document.getElementById('elSubstanceBlock');
+  if (old) old.remove();
+
+  const panel = document.querySelector('.info-panel');
+  if (!panel) return;
+
+  const div = document.createElement('div');
+  div.id = 'elSubstanceBlock';
+  div.className = 'info-block';
+  div.innerHTML = `<h4>Substância Dissolvida</h4>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:4px">
+      ${Object.entries(EL_SUBSTANCES).map(([k,v]) => `
+        <button onclick="setElSubstance('${k}')" id="elBtn_${k}"
+          style="padding:7px 4px;background:${k===elSubstance?'#00c8ff':'var(--surface2)'};
+                 color:${k===elSubstance?'#000':'var(--muted)'};
+                 font-family:'Space Mono',monospace;font-size:9px;letter-spacing:1px;
+                 border:1px solid ${k===elSubstance?'#00c8ff':'var(--border)'};
+                 cursor:pointer;transition:all 0.2s">
+          ${v.label}
+        </button>`).join('')}
+    </div>`;
+  // insert before equation block
+  panel.insertBefore(div, panel.firstChild);
+}
+
+function setElSubstance(key) {
+  elSubstance = key;
+  // reset particles
+  elBubblesC=[]; elBubblesA=[]; elIons=[]; elElectrons=[];
+  elGasCTotal=0; elGasATotal=0;
+
+  const s = EL_SUBSTANCES[key];
+  // update reaction equation and description
+  document.getElementById('reactionEq').textContent = s.overall;
+  document.getElementById('expDesc').textContent =
+    `Cátodo: ${s.cathode.halfRxn}  |  Ânodo: ${s.anode.halfRxn}  |  Tensão mínima: ${s.minVolt}V  |  Razão: ${s.ratio}`;
+
+  // refresh button styles
+  Object.keys(EL_SUBSTANCES).forEach(k => {
+    const btn = document.getElementById('elBtn_'+k);
+    if (!btn) return;
+    const active = k === key;
+    btn.style.background = active ? '#00c8ff' : 'var(--surface2)';
+    btn.style.color = active ? '#000' : 'var(--muted)';
+    btn.style.borderColor = active ? '#00c8ff' : 'var(--border)';
+  });
+
+  addLog(`⚡ Substância: ${s.label}`);
+}
+
+function initElectrolysis() {
+  elBubblesC=[]; elBubblesA=[]; elIons=[]; elElectrons=[];
+  elGasCTotal=0; elGasATotal=0;
+  setTimeout(buildElectrolysisSelector, 50);
+  setElSubstance(elSubstance);
+}
 
 function updateElectrolysis() {
   const volt = parseInt(document.getElementById('voltSlider')?.value || 12);
-  const rate = volt / 10;
+  const conc = parseInt(document.getElementById('elConcSlider')?.value || 50);
+  const temp = parseInt(document.getElementById('elTempSlider')?.value || 25);
+  const curr = volt * (0.08 + conc * 0.007) * (1 + (temp-25)*0.01);
+  const rate = Math.min(curr / 4, 3.5);
+
+  const s = EL_SUBSTANCES[elSubstance];
+  // layout constants (must match drawElectrolysis)
+  const CX = 155, AX = 445;
+  const BY = 90, BH = 190;
+  const ELECTRODE_BOT = BY + BH; // bottom of electrode = bottom of water
+
   if (isRunning) {
-    // H2 at cathode (left)
-    if (Math.random() < rate * 0.2) {
-      bubbles.push({x:160+(Math.random()-0.5)*20, y:260, vy:-(0.5+Math.random()*1)*rate*0.3, r:2+Math.random()*3, type:'H₂', color:'#00c8ff'});
+    // ── CÁTODO: elétron chega → reação na superfície → gás nasce na base do eletrodo ──
+    if (Math.random() < rate * 0.28) {
+      // para CuSO4 não sobe bolha, só íon chegando — mas animamos um "flash" pequeno
+      const isCu = elSubstance === 'cuso4';
+      elBubblesC.push({
+        x: CX + (Math.random()-0.5)*18,
+        y: ELECTRODE_BOT - 5,           // nasce colado na base do eletrodo
+        vy: isCu ? 0 : -(0.8 + Math.random()*1.5) * (0.85 + temp/120),
+        r: isCu ? 4 + Math.random()*3 : 2.5 + Math.random()*3.5,
+        wobble: Math.random()*Math.PI*2,
+        life: 1,
+        isCu,
+      });
     }
-    // O2 at anode (right)  
-    if (Math.random() < rate * 0.1) {
-      bubbles.push({x:440+(Math.random()-0.5)*20, y:260, vy:-(0.3+Math.random()*0.8)*rate*0.3, r:3+Math.random()*4, type:'O₂', color:'#00ff88'});
+
+    // ── ÂNODO: H₂O ou Cl⁻ se oxida → gás nasce na base do eletrodo → libera e⁻ pro fio ──
+    if (Math.random() < rate * 0.14) {
+      elBubblesA.push({
+        x: AX + (Math.random()-0.5)*18,
+        y: ELECTRODE_BOT - 5,           // nasce colado na base do eletrodo
+        vy: -(0.6 + Math.random()*1.2) * (0.85 + temp/120),
+        r: 3 + Math.random()*4,
+        wobble: Math.random()*Math.PI*2,
+        life: 1,
+      });
     }
+
+    // ── ÍONS migram: produto do cátodo sai e anda pro ânodo, e vice-versa ──
+    // OH⁻ / Cl⁻ / SO₄²⁻ produzidos/consumidos no cátodo → migram para o ânodo (ionDir +1 = esquerda→direita)
+    if (Math.random() < rate * 0.18) {
+      const cd = s.cathode;
+      elIons.push({
+        x: CX + 16,                      // nasce na borda direita do cátodo
+        y: BY + 20 + Math.random()*(BH-40),
+        vx: cd.ionDir * (0.55 + Math.random()*0.7),  // +1 = vai pro ânodo
+        vy: (Math.random()-0.5)*0.35,
+        label: cd.ionLabel,
+        color: cd.ionColor,
+        life: 1,
+      });
+    }
+    // H⁺ / Cu²⁺ produzidos/consumidos no ânodo → migram para o cátodo (ionDir -1 = direita→esquerda)
+    if (Math.random() < rate * 0.18) {
+      const ad = s.anode;
+      elIons.push({
+        x: AX - 16,                      // nasce na borda esquerda do ânodo
+        y: BY + 20 + Math.random()*(BH-40),
+        vx: ad.ionDir * (0.55 + Math.random()*0.7),  // -1 = vai pro cátodo
+        vy: (Math.random()-0.5)*0.35,
+        label: ad.ionLabel,
+        color: ad.ionColor,
+        life: 1,
+      });
+    }
+
+    // ── ELÉTRONS no fio externo: saem do ânodo (+) → passam pela fonte → chegam no cátodo (−) ──
+    if (Math.random() < rate * 0.4) {
+      elElectrons.push({ t: 0, speed: 0.007 + Math.random()*0.005 });
+    }
+
+    // Acumula produto (Lei de Faraday simplificada)
+    const F = 96485;
+    elGasCTotal += curr / (2*F) * 0.018;
+    elGasATotal += curr / (4*F) * 0.018;
   }
-  bubbles.forEach(b => { b.y+=b.vy; b.x+=(Math.random()-0.5)*0.5; });
-  bubbles = bubbles.filter(b=>b.y>40);
-  const h2 = bubbles.filter(b=>b.color==='#00c8ff').length;
-  const o2 = bubbles.filter(b=>b.color==='#00ff88').length;
+
+  // Move bubbles: sobem em wobble por toda a trajetória (água + tubo)
+  elBubblesC.forEach(b => {
+    if (!b.isCu) { b.wobble += 0.06; b.x += Math.sin(b.wobble) * 0.3; b.y += b.vy; b.life -= 0.001; }
+    else { b.life -= 0.05; }
+  });
+  elBubblesA.forEach(b => {
+    b.wobble += 0.05; b.x += Math.sin(b.wobble) * 0.28;
+    b.y += b.vy; b.life -= 0.001;
+  });
+  elIons.forEach(p => { p.x += p.vx; p.y += p.vy; p.life -= 0.011; });
+  elElectrons.forEach(e => { e.t += e.speed; });
+
+  // Remove: bolhas que saíram pelo topo do tubo ou morreram
+  elBubblesC = elBubblesC.filter(b => b.life > 0 && b.y > 6);
+  elBubblesA = elBubblesA.filter(b => b.life > 0 && b.y > 6);
+  elIons = elIons.filter(p => p.life > 0 && p.x > CX-10 && p.x < AX+10);
+  elElectrons = elElectrons.filter(e => e.t < 1);
+
   document.getElementById('d1').textContent = `${volt}V`;
-  document.getElementById('d2').textContent = `${(volt*0.8).toFixed(1)}A`;
-  document.getElementById('d3').textContent = `H₂:${h2} O₂:${o2}`;
+  document.getElementById('d2').textContent = `${curr.toFixed(2)}A`;
+  document.getElementById('d3').textContent = `${elBubblesC.length + elBubblesA.length}`;
+  document.getElementById('d4').textContent = `${expTime}s`;
 }
 
 function drawElectrolysis() {
-  ctx.clearRect(0,0,canvas.width,canvas.height);
-  ctx.fillStyle = '#06080d'; ctx.fillRect(0,0,canvas.width,canvas.height);
+  const W = canvas.width, H = canvas.height;
+  ctx.clearRect(0, 0, W, H);
 
-  // Water
-  const wg = ctx.createLinearGradient(80,80,520,280);
-  wg.addColorStop(0,'rgba(0,100,180,0.2)');
-  wg.addColorStop(1,'rgba(0,150,255,0.1)');
+  const volt = parseInt(document.getElementById('voltSlider')?.value || 12);
+  const conc  = parseInt(document.getElementById('elConcSlider')?.value || 50);
+  const temp  = parseInt(document.getElementById('elTempSlider')?.value || 25);
+  const curr  = volt * (0.08 + conc * 0.007) * (1 + (temp-25)*0.01);
+
+  const s = EL_SUBSTANCES[elSubstance];
+  const CX = 155, AX = 445;
+  const BX = 90,  BY = 90, BW = 420, BH = 190;
+
+  // ---- BACKGROUND ----
+  ctx.fillStyle = '#06080d'; ctx.fillRect(0,0,W,H);
+  ctx.strokeStyle = '#0d1520'; ctx.lineWidth = 0.5;
+  for (let gx=0;gx<W;gx+=30){ctx.beginPath();ctx.moveTo(gx,0);ctx.lineTo(gx,H);ctx.stroke();}
+  for (let gy=0;gy<H;gy+=30){ctx.beginPath();ctx.moveTo(0,gy);ctx.lineTo(W,gy);ctx.stroke();}
+
+  // ---- BEAKER water ----
+  const wg = ctx.createLinearGradient(BX, BY, BX, BY+BH);
+  wg.addColorStop(0, s.waterColor[0]);
+  wg.addColorStop(1, s.waterColor[1]);
   ctx.fillStyle = wg;
-  ctx.fillRect(80,80,440,200);
-  ctx.strokeStyle = '#00c8ff22'; ctx.strokeRect(80,80,440,200);
+  ctx.fillRect(BX, BY, BW, BH);
+  // shimmer
+  for (let i=0;i<6;i++) {
+    const wx = BX+20+((i*80+expTime*0.6)%(BW-40));
+    ctx.strokeStyle='#ffffff05'; ctx.lineWidth=1;
+    ctx.beginPath();ctx.moveTo(wx,BY+8);ctx.lineTo(wx+40,BY+8);ctx.stroke();
+  }
+  // border
+  ctx.strokeStyle='#1a3050'; ctx.lineWidth=2; ctx.strokeRect(BX,BY,BW,BH);
+  ctx.strokeStyle='#00c8ff12'; ctx.lineWidth=1; ctx.strokeRect(BX+1,BY+1,BW-2,BH-2);
+  // surface ripple
+  if (isRunning) {
+    ctx.strokeStyle='#00c8ff12'; ctx.lineWidth=1;
+    for (let i=0;i<4;i++) {
+      const rx=BX+40+i*100+Math.sin(expTime*0.04+i)*12;
+      ctx.beginPath();ctx.arc(rx,BY+8,18+i*4,Math.PI+0.4,Math.PI*2-0.4);ctx.stroke();
+    }
+  }
+  // solvent label
+  ctx.fillStyle='#0a3a6a44'; ctx.font='bold 22px Bebas Neue'; ctx.textAlign='center';
+  ctx.fillText(s.solvent, W/2, BY+BH/2+8);
 
-  // Water label
-  ctx.fillStyle = '#00c8ff30'; ctx.font = '14px Space Mono'; ctx.textAlign = 'center';
-  ctx.fillText('H₂O', canvas.width/2, 175);
-
-  // Electrodes
-  // Cathode (left) - blue
-  ctx.fillStyle = '#1a3a5c'; ctx.fillRect(145,60,30,220);
-  ctx.strokeStyle = '#00c8ff'; ctx.lineWidth=2; ctx.strokeRect(145,60,30,220);
-  ctx.fillStyle = '#00c8ff'; ctx.font = '10px Space Mono'; ctx.textAlign='center';
-  ctx.fillText('CÁTODO', 160, 50);
-  ctx.fillText('(−)', 160, 295);
-
-  // Anode (right) - green
-  ctx.fillStyle = '#1a4a2c'; ctx.fillRect(425,60,30,220);
-  ctx.strokeStyle = '#00ff88'; ctx.lineWidth=2; ctx.strokeRect(425,60,30,220);
-  ctx.fillStyle = '#00ff88';
-  ctx.fillText('ÂNODO', 440, 50);
-  ctx.fillText('(+)', 440, 295);
-
-  // Wire & battery
-  ctx.strokeStyle = '#555'; ctx.lineWidth=3;
-  ctx.beginPath(); ctx.moveTo(160,60); ctx.lineTo(160,30); ctx.lineTo(440,30); ctx.lineTo(440,60); ctx.stroke();
-  // Battery symbol
-  ctx.fillStyle='#333'; ctx.fillRect(270,20,60,20);
-  ctx.strokeStyle='#ffd60a'; ctx.lineWidth=2; ctx.strokeRect(270,20,60,20);
-  ctx.fillStyle='#ffd60a'; ctx.font='10px Space Mono'; ctx.textAlign='center';
-  ctx.fillText(`${document.getElementById('voltSlider')?.value||12}V`,300,34);
-
-  // Bubbles
-  bubbles.forEach(b => {
-    ctx.beginPath(); ctx.arc(b.x,b.y,b.r,0,Math.PI*2);
-    ctx.strokeStyle = b.color; ctx.lineWidth=1; ctx.stroke();
-    ctx.fillStyle = b.color+'33'; ctx.fill();
+  // ---- IONS migrating ----
+  elIons.forEach(p => {
+    ctx.globalAlpha = Math.min(p.life*1.4, 0.9);
+    ctx.beginPath(); ctx.arc(p.x, p.y, 10, 0, Math.PI*2);
+    ctx.fillStyle = p.color+'22'; ctx.fill();
+    ctx.strokeStyle = p.color; ctx.lineWidth=1.2; ctx.stroke();
+    ctx.fillStyle = p.color; ctx.font='bold 7px Space Mono'; ctx.textAlign='center';
+    ctx.fillText(p.label, p.x, p.y+3);
+    ctx.globalAlpha=1;
   });
 
-  // Legend
-  ctx.font='9px Space Mono'; ctx.textAlign='left';
-  ctx.fillStyle='#00c8ff'; ctx.fillText('● H₂ (hidrogênio)',90,310);
-  ctx.fillStyle='#00ff88'; ctx.fillText('● O₂ (oxigênio)',250,310);
+  // ---- CATHODE (left) electrode ----
+  const cColor = s.cathode.gasColor;
+  const eGradC = ctx.createLinearGradient(CX-13,0,CX+13,0);
+  eGradC.addColorStop(0,'#071828'); eGradC.addColorStop(0.5,'#0c2a48'); eGradC.addColorStop(1,'#071828');
+  ctx.fillStyle=eGradC; ctx.fillRect(CX-13,BY,26,BH);
+  ctx.shadowColor=cColor; ctx.shadowBlur=isRunning?18:5;
+  ctx.strokeStyle=cColor; ctx.lineWidth=2; ctx.strokeRect(CX-13,BY,26,BH);
+  ctx.shadowBlur=0;
+  ctx.fillStyle=cColor; ctx.font='bold 11px Bebas Neue'; ctx.textAlign='center';
+  ctx.fillText('CÁTODO', CX, BY-34);
+  ctx.font='bold 18px Bebas Neue'; ctx.fillText('(−)', CX, BY-18);
+  ctx.font='8px Space Mono'; ctx.fillStyle=cColor+'88';
+  ctx.fillText('Redução', CX, BY+BH+14);
+  // half-reaction below
+  ctx.fillStyle=cColor+'77'; ctx.font='6.5px Space Mono'; ctx.textAlign='center';
+  const crxn = s.cathode.halfRxn;
+  ctx.fillText(crxn.length>26?crxn.slice(0,26)+'…':crxn, CX, BY+BH+26);
+
+  // ---- ANODE (right) electrode ----
+  const aColor = s.anode.gasColor;
+  const eGradA = ctx.createLinearGradient(AX-13,0,AX+13,0);
+  eGradA.addColorStop(0,'#071d12'); eGradA.addColorStop(0.5,'#0c3020'); eGradA.addColorStop(1,'#071d12');
+  ctx.fillStyle=eGradA; ctx.fillRect(AX-13,BY,26,BH);
+  ctx.shadowColor=aColor; ctx.shadowBlur=isRunning?18:5;
+  ctx.strokeStyle=aColor; ctx.lineWidth=2; ctx.strokeRect(AX-13,BY,26,BH);
+  ctx.shadowBlur=0;
+  ctx.fillStyle=aColor; ctx.font='bold 11px Bebas Neue'; ctx.textAlign='center';
+  ctx.fillText('ÂNODO', AX, BY-34);
+  ctx.font='bold 18px Bebas Neue'; ctx.fillText('(+)', AX, BY-18);
+  ctx.font='8px Space Mono'; ctx.fillStyle=aColor+'88';
+  ctx.fillText('Oxidação', AX, BY+BH+14);
+  const arxn = s.anode.halfRxn;
+  ctx.fillStyle=aColor+'77'; ctx.font='6.5px Space Mono';
+  ctx.fillText(arxn.length>26?arxn.slice(0,26)+'…':arxn, AX, BY+BH+26);
+
+  // ---- WIRE + BATTERY ----
+  // Elétrons saem do ÂNODO (+) → sobem fio direito → passam pela fonte → descem fio esquerdo → chegam no CÁTODO (−)
+  ctx.strokeStyle=aColor+'55'; ctx.lineWidth=2.5; ctx.setLineDash([]);
+  ctx.beginPath();ctx.moveTo(AX,BY);ctx.lineTo(AX,30);ctx.lineTo(W/2+55,30);ctx.stroke();
+  ctx.strokeStyle=cColor+'55';
+  ctx.beginPath();ctx.moveTo(CX,BY);ctx.lineTo(CX,30);ctx.lineTo(W/2-55,30);ctx.stroke();
+
+  // Battery
+  ctx.fillStyle='#0c1520'; ctx.fillRect(W/2-55,16,110,28);
+  ctx.shadowColor='#ffd60a'; ctx.shadowBlur=10;
+  ctx.strokeStyle='#ffd60a'; ctx.lineWidth=1.5; ctx.strokeRect(W/2-55,16,110,28);
+  ctx.shadowBlur=0;
+  for(let i=-2;i<=2;i++){ctx.strokeStyle='#ffd60a44';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(W/2+i*12,20);ctx.lineTo(W/2+i*12,40);ctx.stroke();}
+  ctx.fillStyle='#ffd60a'; ctx.font='bold 12px Bebas Neue'; ctx.textAlign='center';
+  ctx.fillText(`${volt}V  CC`, W/2, 34);
+  ctx.font='7px Space Mono'; ctx.fillStyle='#ffd60a66';
+  ctx.fillText('FONTE DE TENSÃO', W/2, 12);
+
+  // ── Elétrons animados: ânodo(+) → sobe → fonte → desce → cátodo(−) ──
+  if (isRunning) {
+    elElectrons.forEach(e => {
+      const t = e.t;
+      let ex, ey;
+      if (t < 0.35) {
+        // sobe pelo fio do ânodo
+        ex = AX;
+        ey = BY - (BY-30)*(t/0.35);
+      } else if (t < 0.65) {
+        // atravessa o topo da direita → esquerda (passando pela fonte)
+        ex = AX + (CX - AX)*((t-0.35)/0.30);
+        ey = 30;
+      } else {
+        // desce pelo fio do cátodo
+        ex = CX;
+        ey = 30 + (BY-30)*((t-0.65)/0.35);
+      }
+      // halo
+      ctx.beginPath(); ctx.arc(ex,ey,5,0,Math.PI*2);
+      ctx.fillStyle='#ffffff18'; ctx.fill();
+      // dot
+      ctx.beginPath(); ctx.arc(ex,ey,2.5,0,Math.PI*2);
+      ctx.fillStyle='#e0e8ff'; ctx.fill();
+      // label e⁻ no meio do percurso
+      if (t > 0.35 && t < 0.65) {
+        ctx.fillStyle='#aabbff88'; ctx.font='7px Space Mono'; ctx.textAlign='center';
+        ctx.fillText('e⁻', ex, ey-7);
+      }
+    });
+  }
+
+  // ── Geometria dos tubinhos ──
+  // O tubinho fica ACIMA da água: de TY_BOT (= BY, superfície da água) até TY_TOP (topo do canvas)
+  const TW = 28;                   // largura interna do tubo
+  const TY_BOT = BY;               // base do tubo = superfície da água
+  const TY_TOP = 8;                // topo do tubo (vapor sai aqui)
+  const TH = TY_BOT - TY_TOP;     // altura do tubo
+
+  // ── Desenha tubinhos ANTES das bolhas (bolhas ficam na frente) ──
+  const drawTube = (cx, color) => {
+    const tx = cx - TW/2;
+    // preenchimento interno (acumulo de gás)
+    const tgFill = ctx.createLinearGradient(tx, TY_TOP, tx, TY_BOT);
+    tgFill.addColorStop(0, color+'30');
+    tgFill.addColorStop(1, color+'08');
+    ctx.fillStyle = tgFill;
+    ctx.fillRect(tx, TY_TOP, TW, TH);
+    // paredes laterais (só esquerda e direita, fundo aberto para água)
+    ctx.strokeStyle = color+'55'; ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(tx, TY_BOT);
+    ctx.lineTo(tx, TY_TOP);
+    ctx.lineTo(tx+TW, TY_TOP);
+    ctx.lineTo(tx+TW, TY_BOT);
+    ctx.stroke();
+  };
+
+  const cuLabel = elSubstance==='cuso4' ? 'Cu↓' : s.cathode.gasLabel+'↑';
+
+  // Tubo do cátodo
+  if (elSubstance !== 'cuso4') drawTube(CX, cColor);
+  // Tubo do ânodo
+  drawTube(AX, aColor);
+
+  // ── BOLHAS do cátodo ──
+  // Abaixo da superfície (y > BY): bolha redonda sobe na água
+  // Acima da superfície (y <= BY): dentro do tubo, reduz opacity e vira vapor no topo
+  elBubblesC.forEach(b => {
+    if (b.isCu) {
+      // Cu: só flash no eletrodo
+      ctx.globalAlpha = b.life * 0.8;
+      ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, Math.PI*2);
+      ctx.fillStyle = '#e8702055'; ctx.fill();
+      ctx.strokeStyle = '#e87020'; ctx.lineWidth=1; ctx.stroke();
+      ctx.globalAlpha = 1;
+      return;
+    }
+    const inTube = b.y <= TY_BOT;
+    const alpha = inTube
+      ? Math.max(0, (b.y - TY_TOP) / TH) * 0.7   // vai ficando transparente ao subir no tubo
+      : Math.min(b.life, 0.88);
+    ctx.globalAlpha = alpha;
+    if (inTube) {
+      // vapor: círculo difuso sem borda
+      ctx.beginPath(); ctx.arc(b.x, b.y, b.r * (1.2 + (1 - (b.y-TY_TOP)/TH)*0.8), 0, Math.PI*2);
+      ctx.fillStyle = cColor+'44'; ctx.fill();
+    } else {
+      const bg = ctx.createRadialGradient(b.x-b.r*0.35, b.y-b.r*0.35, 0, b.x, b.y, b.r);
+      bg.addColorStop(0,'#ffffff55'); bg.addColorStop(0.4,cColor+'66'); bg.addColorStop(1,cColor+'18');
+      ctx.fillStyle=bg; ctx.beginPath(); ctx.arc(b.x,b.y,b.r,0,Math.PI*2); ctx.fill();
+      ctx.strokeStyle=cColor; ctx.lineWidth=1; ctx.stroke();
+    }
+    ctx.globalAlpha=1;
+  });
+
+  // ── BOLHAS do ânodo ──
+  elBubblesA.forEach(b => {
+    const inTube = b.y <= TY_BOT;
+    const alpha = inTube
+      ? Math.max(0, (b.y - TY_TOP) / TH) * 0.7
+      : Math.min(b.life, 0.88);
+    ctx.globalAlpha = alpha;
+    if (inTube) {
+      ctx.beginPath(); ctx.arc(b.x, b.y, b.r * (1.2 + (1 - (b.y-TY_TOP)/TH)*0.8), 0, Math.PI*2);
+      ctx.fillStyle = aColor+'44'; ctx.fill();
+    } else {
+      const bg = ctx.createRadialGradient(b.x-b.r*0.35, b.y-b.r*0.35, 0, b.x, b.y, b.r);
+      bg.addColorStop(0,'#ffffff55'); bg.addColorStop(0.4,aColor+'66'); bg.addColorStop(1,aColor+'18');
+      ctx.fillStyle=bg; ctx.beginPath(); ctx.arc(b.x,b.y,b.r,0,Math.PI*2); ctx.fill();
+      ctx.strokeStyle=aColor; ctx.lineWidth=1; ctx.stroke();
+    }
+    ctx.globalAlpha=1;
+  });
+
+  // ── Label do gás no topo do tubo ──
+  ctx.font='bold 9px Bebas Neue'; ctx.textAlign='center';
+  if (elSubstance !== 'cuso4') { ctx.fillStyle=cColor; ctx.fillText(cuLabel, CX, TY_TOP+10); }
+  ctx.fillStyle=aColor; ctx.fillText(s.anode.gasLabel+'↑', AX, TY_TOP+10);
+
+  // ---- BOTTOM DATA ----
+  ctx.font='8px Space Mono'; ctx.textAlign='left';
+  ctx.fillStyle='#00c8ff'; ctx.fillText(`I = ${curr.toFixed(2)} A`,  BX,       H-28);
+  ctx.fillStyle='#ffd60a'; ctx.fillText(`P = ${(volt*curr).toFixed(1)} W`, BX+120, H-28);
+  ctx.fillStyle=cColor;    ctx.fillText(`${s.cathode.gasLabel}: ${elGasCTotal.toFixed(5)} g`, BX+240, H-28);
+  ctx.fillStyle=aColor;    ctx.fillText(`${s.anode.gasLabel}: ${elGasATotal.toFixed(5)} g`,   BX+370, H-28);
+  // min voltage check
+  const minV = s.minVolt;
+  ctx.fillStyle = volt >= minV ? '#00ff88' : '#ff4d6d';
+  ctx.font='8px Space Mono'; ctx.textAlign='right';
+  ctx.fillText(volt >= minV ? `▲ ${volt}V ≥ ${minV}V ✓` : `▼ ${volt}V < ${minV}V mín ✗`, W-12, H-28);
+
+  // off hint
+  if (!isRunning && elGasCTotal===0) {
+    ctx.fillStyle='#1a2535';
+    ctx.fillRect(BX,BY,BW,BH);
+    ctx.fillStyle='#2a3a50'; ctx.font='11px Space Mono'; ctx.textAlign='center';
+    ctx.fillText('[ PRESSIONE INICIAR ]', W/2, BY+BH/2+4);
+  }
 }
 
 // ---- BROWNIAN ----
@@ -1467,6 +1871,9 @@ function resetExperiment() {
 
 function switchExperiment(id) {
   stopExperiment();
+  // remove eletrólise selector if switching away
+  const old = document.getElementById('elSubstanceBlock');
+  if (old) old.remove();
   currentExp = id;
   const exp = experiments[id];
   document.getElementById('labTitle').textContent = exp.title;
@@ -1476,6 +1883,26 @@ function switchExperiment(id) {
   document.getElementById('expDesc').textContent = exp.desc;
   document.getElementById('labStatus').textContent = 'PRONTO';
   buildControls(exp);
+  // update data cell keys for electrolysis
+  if (id === 'electrolysis') {
+    document.querySelector('#d1').style.color = '#00c8ff';
+    document.querySelector('#d2').style.color = '#ffd60a';
+    document.querySelector('#d3').style.color = '#00ff88';
+    const keys = document.querySelectorAll('.data-cell .key');
+    if(keys[0]) keys[0].textContent = 'VOLTAGEM';
+    if(keys[1]) keys[1].textContent = 'CORRENTE';
+    if(keys[2]) keys[2].textContent = 'BOLHAS';
+    if(keys[3]) keys[3].textContent = 'TEMPO';
+  } else {
+    document.querySelector('#d1').style.color = exp.color;
+    document.querySelector('#d2').style.color = '#00c8ff';
+    document.querySelector('#d3').style.color = '#ffd60a';
+    const keys = document.querySelectorAll('.data-cell .key');
+    if(keys[0]) keys[0].textContent = 'DADO 1';
+    if(keys[1]) keys[1].textContent = 'TEMP';
+    if(keys[2]) keys[2].textContent = 'PARTÍCULAS';
+    if(keys[3]) keys[3].textContent = 'TEMPO';
+  }
   ctx.clearRect(0,0,canvas.width,canvas.height);
   ctx.fillStyle='#06080d'; ctx.fillRect(0,0,canvas.width,canvas.height);
   addLog(`🔬 Carregado: ${exp.title}`);
